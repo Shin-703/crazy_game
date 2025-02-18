@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Impressive Game</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+    </style>
+    <script>
+        //fureteur web vous avez utilisé pour la réaslisation du tp: Firefox
+        let canvas;    // Objet DOM correspondant au canvas
+        let graphics;  // Contexte de graphique 2d pour dessiner sur la canvas
+
+
+        // etat du jeu (à implémenter)
+        let GAMEOVER = false;
+        let PAUSE = false;
+        let WIN = false; //TODO
+
+        // Variable pour la position des étoiles
+        let constellations = [];
+
+        /* Propriétés de l'application (Note: vous pouvez changer ces valeurs pour tester votre code) */
+        // Propriétés de la ville
+        let buildings = [];
+        let buildingMaxMin = [null, null, null];
+        let buildingWidth;
+        let citySize;
+
+        // Propriétés du vaisseau 
+        let vesselPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+        let speed = -27; // pixels per millisecond
+        let acceleration = 1; // pixels per millisecond per millisecond
+        let vesselLength;
+        let vesselHeight;
+
+        // Propriétés des missiles
+        let missiles = [];
+        let missileSpeed = 27;
+
+        // Propriétés des ennemies
+        let ennemies = [];
+        let ennemiNb = 30;
+        let ennemiSpeed = -speed / 20;
+        let ennemiWidth;
+        let ennemiHeight;
+        let ennemiesMaxLife = 3;
+
+        function generate_constellations() {
+            // Génération des constellations
+            let dispersion = 0.1;
+            for (let i = 0; i < 1 / dispersion; i++) {
+                for (let j = 0; j < 1 / dispersion; j++) {
+                    let n_stars = Math.floor(1 + Math.random() * 7);
+                    let cx = (i + 0.5) * dispersion + (Math.random() - 0.5) * dispersion / 2
+                    let cy = (j + 0.5) * dispersion + (Math.random() - 0.5) * dispersion / 2
+
+                    let stars = [];
+                    for (let k = 0; k < n_stars; k++) {
+                        let pos = { x: cx + dispersion * (Math.random() - 0.5), y: cy + dispersion * (Math.random() - 0.5) }
+                        stars.push(pos)
+                    }
+                    constellations.push(stars)
+                }
+            }
+        }
+
+        function generate_city() {
+            citySize = canvas.width * 3;
+            // fourchettes arbitraires
+            buildingMaxMin[0] = { max: (canvas.height / 5) * 3.4, min: (canvas.height / 5) * 1.5 };
+            buildingMaxMin[1] = { max: (canvas.height / 5) * 2, min: (canvas.height / 6) };
+            buildingMaxMin[2] = { max: (canvas.height / 6) * 1.5, min: 0 };
+            for (let i = 0; i < 3; i++) {
+                let buildings_row = [];
+                let max = buildingMaxMin[i].max;
+                let min = buildingMaxMin[i].min;
+                for (let j = 0; j < 64; j++) {
+                    let bheight = Math.floor(Math.random() * (max - min + 1)) + min;
+                    let bx = Math.floor(Math.random() * citySize);
+                    let building = { height: bheight, x: bx };
+                    buildings_row.push(building);
+                }
+                buildings.push(buildings_row);
+            }
+        }
+
+        function generate_ennemies() {
+            let minX = canvas.width;
+            let minY = 0;
+            let maxX = citySize;
+            let maxY = canvas.height;
+            for (let i = 0; i < ennemiNb; ++i) {
+                let posX = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+                let posY = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+                ennemies.push({ x: posX, y: posY, aie: 0 });
+            }
+        }
+
+        function draw_smog() {
+            const gradient = graphics.createLinearGradient(0, 0, 0, 1000);
+            gradient.addColorStop(0, "rgba(142, 0, 128, 0.5)"); //purple
+            gradient.addColorStop(1, "rgba(25, 25, 112, 0.5)"); //blue
+
+            graphics.fillStyle = gradient;
+            graphics.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function draw() {
+            // On nettoie le canvas avant de redessiner
+            graphics.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessine le background
+            draw_background();
+
+            // On dessine la ville
+            draw_city();
+
+            // On dessine le epic vaisseau
+            draw_epic_vessel("#000000", "#FFAA00", vesselPos.x, vesselPos.y, 1, "#3295FF", "#52B5FF");
+
+            // On dessine les missiles
+            draw_missiles();
+
+            // Ennemies 
+            draw_ennemis()
+
+            // Draw smog
+            draw_smog();
+        }
+
+        function draw_ennemi(x, y, pain) {
+            ennemiWidth = canvas.width / 50; //could refractor to make cleaner dessous mais j'ai la grosse flemme (to fix one day)
+            ennemiHeight = ennemiWidth / 3 + (ennemiWidth / 3) * 2;
+            //top
+            if (pain == 0) { graphics.fillStyle = "red"; }
+            if (pain == 1) { graphics.fillStyle = "black"; }
+            if (pain == 2) { graphics.fillStyle = "darkRed"; }
+            graphics.beginPath();
+            graphics.arc(x, y, ennemiWidth / 3, 1 * Math.PI, 0);
+            graphics.stroke();
+            graphics.fill();
+            //body
+            if (pain == 0) { graphics.fillStyle = "purple"; }
+            if (pain == 1) { graphics.fillStyle = "crimson"; }
+            if (pain == 2) { graphics.fillStyle = "red"; }
+            graphics.beginPath();
+            graphics.ellipse(x, y + ennemiWidth / 3, ennemiWidth, ennemiWidth / 3, 0, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+            //circles
+            graphics.fillStyle = "black";
+            if (pain == 2) { graphics.fillStyle = "darkRed" }
+            graphics.beginPath();
+            graphics.arc(x, y + ennemiWidth / 3, ennemiWidth / 10, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+            graphics.beginPath();
+            graphics.arc(x - ennemiWidth / 2, y + ennemiWidth / 3, ennemiWidth / 10, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+            graphics.beginPath();
+            graphics.arc(x + ennemiWidth / 2, y + ennemiWidth / 3, ennemiWidth / 10, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+
+        }
+
+        function draw_ennemis() {
+            for (let i = 0; i < ennemies.length; ++i)
+                draw_ennemi(ennemies[i].x, ennemies[i].y, ennemies[i].aie);
+        }
+
+
+        function draw_epic_vessel(bodyColor, wingHeadColor, x, y, size, trailColor1, trailColor2) {
+            vesselLength = (canvas.width / 25) * size;
+            vesselHeight = (vesselLength / 3) * size;
+            const trailLength = (vesselHeight * 2) * 1.7;
+            const frontLength = (vesselHeight * 1.3);
+            const wingHeight = (vesselHeight * 0.7);
+            const wingLength = vesselHeight;
+
+            // la trainee
+            graphics.shadowBlur = 10;
+            graphics.shadowColor = "lightBlue";
+            graphics.fillStyle = trailColor1;
+            graphics.beginPath();
+            graphics.moveTo(x, y);
+            graphics.lineTo(x, vesselHeight + y);
+            graphics.lineTo(x - trailLength, vesselHeight / 2 + y);
+            graphics.lineTo(x, y);
+            graphics.fill();
+            graphics.shadowBlur = 0;
+            // triangle interieur de la trainee
+            graphics.fillStyle = trailColor2;
+            graphics.beginPath();
+            graphics.moveTo(x, y);
+            graphics.lineTo(x, vesselHeight + y);
+            graphics.lineTo(x - trailLength / 2, vesselHeight / 2 + y);
+            graphics.lineTo(x, y);
+            graphics.fill();
+
+            // ailes
+            // aile dessous
+            graphics.fillStyle = wingHeadColor;
+            graphics.beginPath();
+            graphics.moveTo(x, y + vesselHeight);
+            graphics.lineTo(x, y + vesselHeight + wingHeight);
+            graphics.lineTo(x + wingLength, y + vesselHeight);
+            graphics.stroke();
+            graphics.fill();
+            // aile dessus
+            graphics.beginPath();
+            graphics.moveTo(x, y);
+            graphics.lineTo(x, y - wingHeight);
+            graphics.lineTo(x + wingLength, y);
+            graphics.stroke();
+            graphics.fill();
+
+            // cercles sur ailes
+            // dessus
+            graphics.fillStyle = bodyColor;
+            graphics.beginPath();
+            graphics.arc(x + wingLength / 4, y - wingHeight / 3, wingHeight / 7, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+            // dessous
+            graphics.beginPath();
+            graphics.arc(x + wingLength / 4, y + vesselHeight + wingHeight / 3, wingHeight / 7, 0, 2 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+
+            // corps principal
+            graphics.fillStyle = bodyColor;
+            graphics.beginPath();
+            graphics.moveTo(x, y);
+            graphics.lineTo(x + vesselLength, y);
+            graphics.lineTo(x + vesselLength, y + vesselHeight);
+            graphics.lineTo(x, y + vesselHeight);
+            graphics.arc(x, y + vesselHeight / 2, vesselHeight / 2, 0.5 * Math.PI, 1.5 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+
+            // aile milieu
+            graphics.fillStyle = wingHeadColor;
+            const wingWidth = vesselHeight / 8;
+            graphics.beginPath();
+            graphics.moveTo(x, y + vesselHeight / 2 + wingWidth / 2);
+            graphics.lineTo(x + wingLength, y + vesselHeight / 2 + wingWidth / 2);
+            graphics.lineTo(x + wingLength, y + vesselHeight / 2 - wingWidth / 2);
+            graphics.lineTo(x, y + vesselHeight / 2 - wingWidth / 2);
+            graphics.stroke();
+            graphics.fill();
+
+            // devant du vaisseau
+            graphics.beginPath();
+            graphics.moveTo(x + vesselLength, y);
+            graphics.lineTo(x + vesselLength + frontLength, y + vesselHeight / 2);
+            graphics.lineTo(x + vesselLength, y + vesselHeight);
+            graphics.arc(x + vesselLength, y + vesselHeight / 2, vesselHeight / 2, 0.5 * Math.PI, 1.5 * Math.PI);
+            graphics.stroke();
+            graphics.fill();
+        }
+
+        function draw_missiles() {
+            for (let i = 0; i < missiles.length; ++i)
+                draw_epic_vessel("green", "black", missiles[i].x, missiles[i].y, 0.7, "red", "lightRed");
+        }
+
+        function draw_background() {
+            graphics.fillStyle = "midnightblue";
+            graphics.fillRect(0, 0, canvas.width, canvas.height);
+
+            graphics.setLineDash([1.5, 1.5]);
+            graphics.lineWidth = 2;
+            graphics.strokeStyle = "white";
+
+            for (let i = 0; i < constellations.length; i++) {
+                let starlist = constellations[i];
+
+                for (let j = 0; j < starlist.length; j++) {
+                    star = starlist[j];
+                    graphics.beginPath();
+                    graphics.arc(star.x * window.innerWidth, star.y * window.innerHeight, 3, 0, Math.PI * 2);
+                    graphics.fillStyle = "white";
+                    graphics.fill();
+
+                    if (j < starlist.length - 1) {
+                        let nextStar = starlist[j + 1];
+                        graphics.beginPath();
+                        graphics.moveTo(star.x * window.innerWidth, star.y * window.innerHeight);
+                        graphics.lineTo(nextStar.x * window.innerWidth, nextStar.y * window.innerHeight);
+                        graphics.stroke();
+                    }
+                }
+            }
+        }
+
+        function draw_city() {
+            graphics.setLineDash([0, 0]);
+            graphics.lineWidth = 2;
+            graphics.strokeStyle = "black";
+
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 64; j++) {
+                    buildingWidth = canvas.width / 15
+                    let depthAdjustment = (i + 1) * 40 + j;
+                    let r = 178 - depthAdjustment;
+                    let g = 104 - depthAdjustment;
+                    let b = 89 - depthAdjustment;
+                    let building = buildings[i][j];
+
+                    graphics.beginPath();
+                    graphics.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+                    graphics.fillRect(building.x, canvas.height - building.height, buildingWidth, building.height);
+                    graphics.rect(building.x, canvas.height - building.height, buildingWidth, building.height);
+                    graphics.stroke();
+                }
+            }
+        }
+
+        function updateBuildingPositions() {
+            for (let i = 0; i < buildings.length; ++i) {
+                for (let j = 0; j < buildings[i].length; ++j) {
+                    buildings[i][j].x += speed * ((i + 1) / 3);
+                    if (buildings[i][j].x + buildingWidth < 0)
+                      buildings[i][j].x = citySize;
+                }
+            }
+        }
+
+        function updateEnnemiPosition() {
+            ennemiSpeed = -speed / 5;
+            for (let i = 0; i < ennemies.length; ++i) {
+                ennemies[i].x = ennemies[i].x - ennemiSpeed * (ennemies[i].aie + 1);
+                if (ennemies[i].x + ennemiWidth < 0)
+                    ennemies[i].x = citySize;
+            }
+        }
+
+        function updateMissilePosition() {
+            for (let i = 0; i < missiles.length; ++i) {
+                missiles[i].x = missiles[i].x + missileSpeed;
+                if (missiles[i].x > canvas.width * 3)
+                    missiles.splice(i, 1);
+            }
+        }
+
+        function updateVesselPosition(e) {
+            // Touche W ou Up
+            const a = 65;
+            const d = 68;
+            const s = 83;
+            const w = 87;
+            let vessY = vesselPos.y;
+            let vessX = vesselPos.x;
+            const movementY = canvas.height / 50;
+            const movementX = canvas.width / 50;
+            const vesselHeight = 40;
+
+
+            //TODO: fix movement/missile throwing to be smooth and not stop throwing when moving
+            // Touche S ou Down
+            if ((e.keyCode == s || e.keyCode == 40) && vessY < canvas.height - vesselHeight)
+                vesselPos.y = vessY + movementY;
+            // Touche D ou Right
+            if ((e.keyCode == d || e.keyCode == 39) && vessX < canvas.width)
+                vesselPos.x = vessX + movementX;
+            // Touche W ou Up
+            if ((e.keyCode == w || e.keyCode == 38) && vessY > 0)
+                vesselPos.y = vessY - movementY;
+            // Touche A ou Left
+            if ((e.keyCode == a || e.keyCode == 37) && vessX > 0)
+                vesselPos.x = vessX - movementX;
+
+            // Touche Espace
+            if (e.keyCode == 32)
+                missiles.push({ x: vesselPos.x, y: vesselPos.y + vesselHeight / 2 })
+        }
+
+        function kill(deadEnnemies, deadMissiles) {
+            for (let i = 0; i < deadEnnemies.length; ++i)
+                ennemies.splice(deadEnnemies[i], 1);
+            for (let i = 0; i < deadMissiles.length; ++i)
+                missiles.splice(deadMissiles[i], 1);
+        }
+
+
+        function colisions() {
+            let funnyRange = ennemiHeight / 2;
+            let deadEnnemies = [];
+            let deadMissiles = [];
+            for (let i = 0; i < ennemies.length; ++i)
+                for (let j = 0; j < missiles.length; ++j) {
+                    //TODO: faire les maths pour rendre la hitbox beaucoup plus clean
+                    let hitpointX = missiles[j].x + vesselLength + (vesselHeight * 1.3); //tested with 1.3 and looks legit
+                    let hitpointY = missiles[j].y + vesselHeight / 2;
+                    //add check if ennemi in window? to decide on the behavior wanted
+                    if (ennemies[i].x - funnyRange < hitpointX && hitpointX < ennemies[i].x + funnyRange &&
+                        (ennemies[i].y - ennemiHeight < hitpointY && hitpointY < ennemies[i].y + ennemiHeight)) {
+                        ennemies[i].pv = ennemies[i].pv - 1;
+                        ennemies[i].aie++;
+                        deadMissiles.push(j);
+                        if (ennemies[i].aie >= ennemiesMaxLife)
+                            deadEnnemies.push(i);
+                    }
+                }
+            kill(deadEnnemies, deadMissiles);
+        }
+
+        // function releaseSpace(e) {
+
+        // }
+
+        function init() {
+            // Initialisation du dessin. Il s'affiche sur toute la fenêtre
+            canvas = document.getElementById("theCanvas");
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            window.addEventListener("keydown", updateVesselPosition, true);
+            //window.addEventListener("keyup", releaseSpace, true);
+            graphics = canvas.getContext("2d");
+
+            // Initialisation
+            generate_constellations();
+            generate_city();
+            generate_ennemies();
+            requestAnimationFrame(update);
+        }
+
+        function update() {
+            if (GAMEOVER) {
+                console.log(":(")
+                //TODO ecran gameover
+                //if startover... click machin
+                return;
+            }
+
+            if (PAUSE) {
+                //TODO: ecran de pause and stop movement
+            }
+
+            // colisions?
+            colisions();
+
+            // On dessine !
+            draw();
+
+            // update buildings
+            updateBuildingPositions();
+
+            // update missiles
+            updateMissilePosition()
+
+            // update ennemis
+            updateEnnemiPosition()
+
+            // Request new animation frame
+            requestAnimationFrame(update);
+        }
+    </script>
+</head>
+
+<body onload="init()">
+    <canvas id="theCanvas"></canvas>
+</body>
+
+</html>
