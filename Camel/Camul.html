@@ -192,7 +192,7 @@
             camulWidth = canvas.width / 30
             camulHeight = canvas.width / 30
             const img = new Image();
-            img.src = './camel.png';
+            img.src = './camel2.png';
             graphics.drawImage(img, x - canvas.width / 30, y - canvas.width / 30, canvas.width / 15, canvas.width / 15)
         }
 
@@ -345,7 +345,7 @@
             }
         }
 
-        function updateBuildingPositions() {
+        function updateMountainsPositions() {
             for (let i = 0; i < mountains.length; ++i) {
                 for (let j = 0; j < mountains[i].length; ++j) {
                     mountains[i][j].x += speed * ((i + 1) / 3);
@@ -386,7 +386,7 @@
 
             //TODO: fix movement/missile throwing to be smooth and not stop throwing when moving
             // Touche S ou Down
-            if ((e.keyCode == s || e.keyCode == 40) && vessY < canvas.height - camulHeight)
+            if ((e.keyCode == s || e.keyCode == 40) && vessY < canvas.height - camulHeight/2)
                 camulPos.y = vessY + movementY;
             // Touche D ou Right
             if ((e.keyCode == d || e.keyCode == 39) && vessX < canvas.width)
@@ -421,7 +421,7 @@
 
 
         function colisions() {
-            let hitBoxRange = 7;
+            let hitBoxRange = 8;
             let deadEnnemies = [];
             let deadMissiles = [];
             for (let i = 0; i < ennemies.length; ++i) {
@@ -467,6 +467,7 @@
         function restart() {
             camulPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
             ennemies = [];
+            missiles = [];
             generate_ennemies();
         }
 
@@ -513,7 +514,7 @@
                 draw();
 
                 // update buildings
-                updateBuildingPositions();
+                updateMountainsPositions();
 
                 // update missiles
                 updateMissilePosition()
